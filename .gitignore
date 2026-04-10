@@ -1,0 +1,8 @@
+bin/
+obj/
+publish/
+services.yaml
+.claude/
+docs/
+.idea/
+.superpowers/
