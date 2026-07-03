@@ -1,7 +1,7 @@
 <Window x:Class="ServiceManager.Dashboard.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Dashboard" Width="1000" Height="600"
+        Title="SAM - Service Manager" Width="1000" Height="600"
         Icon="app.ico"
         Background="{StaticResource MainBg}">
     <DockPanel>
@@ -10,33 +10,6 @@
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
                 Padding="6,4">
             <DockPanel LastChildFill="False">
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                    <Button x:Name="BtnStart" Content="Start" Style="{StaticResource ToolbarButton}" Click="OnStart"/>
-                    <Button x:Name="BtnStop" Content="Stop" Style="{StaticResource DangerButton}" Click="OnStop"/>
-                    <Button x:Name="BtnRestart" Content="Restart" Style="{StaticResource WarnButton}" Click="OnRestart"/>
-                    <Rectangle Width="1" Fill="{StaticResource BorderBrush}" Margin="8,2"/>
-                    <Button x:Name="BtnStartAll" Content="Start All" Style="{StaticResource ToolbarButton}" Click="OnStartAll"/>
-                    <Button x:Name="BtnStopAll" Content="Stop All" Style="{StaticResource DangerButton}" Click="OnStopAll"/>
-                    <Rectangle Width="1" Fill="{StaticResource BorderBrush}" Margin="8,2"/>
-                    <Button x:Name="BtnEditConfig" Style="{StaticResource ToolbarButton}" Click="OnEditConfig" ToolTip="Edit service config">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                            <TextBlock Text="Edit" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                    <Button x:Name="BtnNewService" Style="{StaticResource ToolbarButton}" Click="OnNewService" ToolTip="Add new service">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                            <TextBlock Text="New" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                    <Button x:Name="BtnDeleteService" Style="{StaticResource DangerButton}" Click="OnDeleteService" ToolTip="Delete service">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                            <TextBlock Text="Delete" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Margin="8,0">
                     <Button x:Name="BtnStartServer" Content="Start Server" Style="{StaticResource ToolbarButton}" Click="OnStartServer" Margin="0,0,4,0"/>
                     <Button x:Name="BtnStopServer" Content="Stop Server" Style="{StaticResource DangerButton}" Click="OnStopServer" Margin="0,0,8,0"/>
@@ -60,12 +33,61 @@
             <Border Grid.Column="0" Background="{StaticResource PanelBg}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="SERVICES" Margin="8,6"
-                               Foreground="{StaticResource HeaderText}" FontSize="11" FontWeight="SemiBold"/>
+                    <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="4,4">
+                        <Button x:Name="BtnStart" DockPanel.Dock="Left" Style="{StaticResource ToolbarButton}" Click="OnStart" ToolTip="Start">
+                            <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="BtnStop" DockPanel.Dock="Left" Style="{StaticResource DangerButton}" Click="OnStop" ToolTip="Stop">
+                            <TextBlock Text="&#xE71A;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="BtnNewService" DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}" Click="OnNewService" ToolTip="Add new service">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock Text="New" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </DockPanel>
                     <ListBox x:Name="ServiceList" Background="Transparent"
                              BorderThickness="0" Foreground="{StaticResource DefaultText}"
                              FontFamily="Consolas" FontSize="17"
-                             SelectionChanged="OnServiceSelected"/>
+                             SelectionChanged="OnServiceSelected">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock x:Name="Dot" Text="&#x25CF;" Margin="4,0,10,0" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource RunningText}"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <StackPanel x:Name="RowActions" Grid.Column="1" Orientation="Horizontal"
+                                                VerticalAlignment="Center" Visibility="Hidden">
+                                        <Button Style="{StaticResource ItemIconButton}" Click="OnEditConfig"
+                                                ToolTip="Edit service">
+                                            <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                        </Button>
+                                        <Button Style="{StaticResource ItemIconButton}" Click="OnDeleteService"
+                                                ToolTip="Delete service">
+                                            <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsRunning}" Value="False">
+                                        <Setter TargetName="Dot" Property="Text" Value="&#x25CB;"/>
+                                        <Setter TargetName="Dot" Property="Foreground" Value="{StaticResource BorderBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Value="True"
+                                                 Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
+                                        <Setter TargetName="RowActions" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </DockPanel>
             </Border>
 

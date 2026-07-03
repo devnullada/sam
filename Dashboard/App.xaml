@@ -10,14 +10,14 @@
 
         <!-- Text colors -->
         <SolidColorBrush x:Key="DefaultText" Color="#cccccc"/>
-        <SolidColorBrush x:Key="ValueText" Color="#dcdcaa"/>
-        <SolidColorBrush x:Key="HeaderText" Color="#569cd6"/>
-        <SolidColorBrush x:Key="RunningText" Color="#4ec9b0"/>
+        <SolidColorBrush x:Key="ValueText" Color="#6eac7f"/>
+        <SolidColorBrush x:Key="HeaderText" Color="#7a689c"/>
+        <SolidColorBrush x:Key="RunningText" Color="#55d659"/>
         <SolidColorBrush x:Key="StoppedText" Color="#f14c4c"/>
 
         <!-- Button style -->
         <Style x:Key="ToolbarButton" TargetType="Button">
-            <Setter Property="Background" Value="#0e639c"/>
+            <Setter Property="Background" Value="#7a689c"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="12,4"/>
@@ -34,7 +34,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#1177bb"/>
+                                <Setter Property="Background" Value="#7b4da2"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Background" Value="#3c3c3c"/>
@@ -77,7 +77,7 @@
         </Style>
 
         <Style x:Key="WarnButton" TargetType="Button">
-            <Setter Property="Background" Value="#d97706"/>
+            <Setter Property="Background" Value="#74968b"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="12,4"/>
@@ -94,7 +94,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#e5911a"/>
+                                <Setter Property="Background" Value="#788094"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Background" Value="#3c3c3c"/>
@@ -112,8 +112,34 @@
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
 
+        <!-- Small transparent icon button for per-row actions -->
+        <Style x:Key="ItemIconButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#cccccc"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="5,2"/>
+            <Setter Property="Margin" Value="1,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="2"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#3c3c3c"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="ListBoxItem">
             <Setter Property="Foreground" Value="#cccccc"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="Padding" Value="6,3"/>
             <Setter Property="FontFamily" Value="Consolas"/>
             <Setter Property="FontSize" Value="13"/>
@@ -128,7 +154,7 @@
                                 <Setter TargetName="Bd" Property="Background" Value="#2a2d2e"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#094771"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#7b4da2"/>
                                 <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                         </ControlTemplate.Triggers>

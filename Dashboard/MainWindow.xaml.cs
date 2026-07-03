@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     private readonly string _configPath;
     private readonly DispatcherTimer _timer;
     private List<ServiceStatus> _services = [];
+    private readonly ObservableCollection<ServiceItemVm> _items = [];
     private string? _subscribedService;
     private int _outputLineCount;
     private const int MaxOutputLines = 1000;
@@ -38,6 +40,7 @@ public partial class MainWindow : Window
         EnableDarkTitleBar();
         _client = client;
         _configPath = configPath;
+        ServiceList.ItemsSource = _items;
 
         RestoreWindowBounds();
 
@@ -101,7 +104,7 @@ public partial class MainWindow : Window
     {
         _services = [];
         ServiceList.SelectionChanged -= OnServiceSelected;
-        ServiceList.ItemsSource = null;
+        _items.Clear();
         ServiceList.SelectionChanged += OnServiceSelected;
         _subscribedService = null;
         OutputParagraph.Inlines.Clear();
@@ -117,31 +120,38 @@ public partial class MainWindow : Window
     {
         var services = await _client.GetServices();
         var selectedName = GetSelectedServiceName();
+        var previousIndex = ServiceList.SelectedIndex;
 
         _services = services;
-        var items = _services.Select(s =>
-        {
-            var tb = new System.Windows.Controls.TextBlock { FontSize = 17, FontFamily = new FontFamily("Consolas") };
-            tb.Inlines.Add(new System.Windows.Documents.Run(s.IsRunning ? " ●  " : " ○  ")
-            {
-                Foreground = s.IsRunning
-                    ? (System.Windows.Media.Brush)FindResource("RunningText")
-                    : (System.Windows.Media.Brush)FindResource("BorderBrush")
-            });
-            tb.Inlines.Add(new System.Windows.Documents.Run(s.Name));
-            return (object)tb;
-        }).ToList();
 
-        var previousIndex = ServiceList.SelectedIndex;
+        // Reconcile the stable collection in place so periodic refreshes don't
+        // rebuild rows (which would reset hover/selection every tick).
         ServiceList.SelectionChanged -= OnServiceSelected;
-        ServiceList.ItemsSource = items;
+        for (var i = _items.Count - 1; i >= 0; i--)
+            if (!services.Any(s => s.Name == _items[i].Name))
+                _items.RemoveAt(i);
+        for (var i = 0; i < services.Count; i++)
+        {
+            var s = services[i];
+            var existing = _items.FirstOrDefault(it => it.Name == s.Name);
+            if (existing is null)
+            {
+                _items.Insert(i, new ServiceItemVm(s.Name, s.IsRunning));
+            }
+            else
+            {
+                existing.IsRunning = s.IsRunning;
+                var curIdx = _items.IndexOf(existing);
+                if (curIdx != i) _items.Move(curIdx, i);
+            }
+        }
 
         if (selectedName != null)
         {
             var idx = _services.FindIndex(s => s.Name == selectedName);
             if (idx >= 0) ServiceList.SelectedIndex = idx;
         }
-        else if (previousIndex >= 0 && previousIndex < items.Count)
+        else if (previousIndex >= 0 && previousIndex < _items.Count)
         {
             ServiceList.SelectedIndex = previousIndex;
         }
@@ -257,12 +267,7 @@ public partial class MainWindow : Window
         var hasSelection = svc != null && _serverOnline;
         BtnStart.IsEnabled = hasSelection && !isRunning;
         BtnStop.IsEnabled = hasSelection && isRunning;
-        BtnRestart.IsEnabled = hasSelection && isRunning;
-        BtnStartAll.IsEnabled = _serverOnline;
-        BtnStopAll.IsEnabled = _serverOnline;
-        BtnEditConfig.IsEnabled = hasSelection && _serverOnline;
         BtnNewService.IsEnabled = _serverOnline;
-        BtnDeleteService.IsEnabled = hasSelection && _serverOnline;
     }
 
     private async Task RunWithSpinner(Button button, Func<Task> action)
@@ -382,18 +387,6 @@ public partial class MainWindow : Window
             });
     }
 
-    private async void OnRestart(object sender, RoutedEventArgs e)
-    {
-        var svc = GetSelectedService();
-        if (svc is not null)
-            await RunWithSpinner(BtnRestart, async () =>
-            {
-                await _client.RestartService(svc.Name);
-                await Task.Delay(500);
-                await SwitchOutputSubscription(force: true);
-            });
-    }
-
     private async void OnClearOutput(object sender, RoutedEventArgs e)
     {
         OutputParagraph.Inlines.Clear();
@@ -410,27 +403,11 @@ public partial class MainWindow : Window
             Clipboard.SetText(text);
     }
 
-    private async void OnStartAll(object sender, RoutedEventArgs e) =>
-        await RunWithSpinner(BtnStartAll, async () =>
-        {
-            await _client.StartAll();
-            await Task.Delay(500);
-            await SwitchOutputSubscription(force: true);
-        });
-    private async void OnStopAll(object sender, RoutedEventArgs e) =>
-        await RunWithSpinner(BtnStopAll, async () =>
-        {
-            await _client.StopAll();
-            await Task.Delay(500);
-            await SwitchOutputSubscription(force: true);
-        });
-
     private async void OnEditConfig(object sender, RoutedEventArgs e)
     {
-        var svc = GetSelectedService();
-        if (svc is null) return;
+        if ((sender as FrameworkElement)?.DataContext is not ServiceItemVm item) return;
 
-        var entry = await _client.GetServiceConfig(svc.Name);
+        var entry = await _client.GetServiceConfig(item.Name);
         if (entry is null)
         {
             MessageBox.Show("Could not load service config.", "Dashboard",
@@ -441,7 +418,7 @@ public partial class MainWindow : Window
         var dialog = new EditServiceDialog(entry) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is not null)
         {
-            var ok = await _client.UpdateServiceConfig(svc.Name, dialog.Result);
+            var ok = await _client.UpdateServiceConfig(item.Name, dialog.Result);
             if (!ok)
                 MessageBox.Show("Failed to save config.", "Dashboard",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -469,14 +446,13 @@ public partial class MainWindow : Window
 
     private async void OnDeleteService(object sender, RoutedEventArgs e)
     {
-        var svc = GetSelectedService();
-        if (svc is null) return;
+        if ((sender as FrameworkElement)?.DataContext is not ServiceItemVm item) return;
 
-        var result = MessageBox.Show($"Delete service '{svc.Name}'?", "Dashboard",
+        var result = MessageBox.Show($"Delete service '{item.Name}'?", "Dashboard",
             MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result != MessageBoxResult.Yes) return;
 
-        var ok = await _client.DeleteService(svc.Name);
+        var ok = await _client.DeleteService(item.Name);
         if (!ok)
             MessageBox.Show("Failed to delete service.", "Dashboard",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
