@@ -1,5 +1,7 @@
 # Service Manager (sam)
 
+![Service Manager app icon](assets/app-image.png)
+
 A client-server service manager for running multiple background services (npm, PowerShell, Electron, etc.) with a CLI, a WPF Dashboard, a Terminal.Gui TUI, and an HTTP/WebSocket API.
 
 ## Architecture
