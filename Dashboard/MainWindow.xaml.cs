@@ -370,6 +370,7 @@ public partial class MainWindow : Window
             await RunWithSpinner(BtnStart, async () =>
             {
                 await _client.StartService(svc.Name);
+                await _client.ClearOutput(svc.Name);
                 await Task.Delay(500);
                 await SwitchOutputSubscription(force: true);
             });
