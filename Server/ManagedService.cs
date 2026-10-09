@@ -71,6 +71,7 @@ public class ManagedService
         // Output goes to a pipe, so most tools disable color unless forced
         psi.Environment["FORCE_COLOR"] = "1";
         psi.Environment["CLICOLOR_FORCE"] = "1";
+        psi.Environment.Remove("NO_COLOR");
 
         _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         _process.OutputDataReceived += (_, e) => { if (e.Data is not null) AddOutputLine(e.Data); };
