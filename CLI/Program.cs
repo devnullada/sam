@@ -102,33 +102,33 @@ async Task HandleServer(string[] serverArgs)
 async Task RunCommand(string[] parts)
 {
     var cmd = parts[0].ToLower();
-    var arg = parts.Length > 1 ? parts[1].Trim() : null;
+    var rest = parts.Skip(1).SelectMany(p => p.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToList();
+    // `output` takes an optional trailing line count; everything else is the (possibly multi-word) service name
+    var count = 30;
+    if (cmd == "output" && rest.Count > 1 && int.TryParse(rest[^1], out var n)) { count = n; rest.RemoveAt(rest.Count - 1); }
+    var arg = rest.Count > 0 ? string.Join(' ', rest) : null;
+    var escaped = arg is null ? null : Uri.EscapeDataString(arg);
 
     switch (cmd)
     {
         case "start":
             if (arg == "all") { await Post("/services/start-all"); Console.WriteLine("Started all."); }
-            else if (arg is not null) { await Post($"/services/{arg}/start"); Console.WriteLine($"Started {arg}."); }
+            else if (arg is not null) { await Post($"/services/{escaped}/start"); Console.WriteLine($"Started {arg}."); }
             else Console.WriteLine("Usage: sam start <name|all>");
             break;
         case "stop":
             if (arg == "all") { await Post("/services/stop-all"); Console.WriteLine("Stopped all."); }
-            else if (arg is not null) { await Post($"/services/{arg}/stop"); Console.WriteLine($"Stopped {arg}."); }
+            else if (arg is not null) { await Post($"/services/{escaped}/stop"); Console.WriteLine($"Stopped {arg}."); }
             else Console.WriteLine("Usage: sam stop <name|all>");
             break;
         case "restart":
-            if (arg is not null) { await Post($"/services/{arg}/restart"); Console.WriteLine($"Restarted {arg}."); }
+            if (arg is not null) { await Post($"/services/{escaped}/restart"); Console.WriteLine($"Restarted {arg}."); }
             else Console.WriteLine("Usage: sam restart <name>");
             break;
         case "output":
-        {
-            var outputParts = arg?.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            var name = outputParts?.FirstOrDefault();
-            var count = outputParts?.Length > 1 && int.TryParse(outputParts[1], out var n) ? n : 30;
-            if (name is not null) await PrintOutput(name, count);
+            if (arg is not null) await PrintOutput(arg, count);
             else Console.WriteLine("Usage: sam output <name> [lines]");
             break;
-        }
     }
 }
 
@@ -177,7 +177,7 @@ async Task PrintOutput(string name, int lines)
     using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
     try
     {
-        var json = await http.GetStringAsync($"http://localhost:{port}/services/{name}/output?lines={lines}");
+        var json = await http.GetStringAsync($"http://localhost:{port}/services/{Uri.EscapeDataString(name)}/output?lines={lines}");
         var outputLines = JsonSerializer.Deserialize<List<string>>(json, jsonOpts) ?? new();
         Console.WriteLine();
         Console.WriteLine($"  --- {name} (last {outputLines.Count} lines) ---");
