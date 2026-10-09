@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 using ServiceManager.Shared;
 
 namespace ServiceManager.Server;
@@ -30,9 +29,6 @@ public class ManagedService
 
     public string? BaseDirectory { get; set; }
 
-    private static readonly Regex AnsiRegex = new(@"\x1B\[[0-9;]*[a-zA-Z]|\x1B\].*?(\x07|\x1B\\)", RegexOptions.Compiled);
-    private static string StripAnsi(string text) => AnsiRegex.Replace(text, "");
-
     public void ClearOutput()
     {
         lock (_outputLock) _outputLines.Clear();
@@ -40,7 +36,8 @@ public class ManagedService
 
     private void AddOutputLine(string line)
     {
-        var clean = StripAnsi(line);
+        // Keep color codes for the dashboard; drop cursor/title/etc. sequences
+        var clean = Ansi.StripNonSgr(line);
         lock (_outputLock)
         {
             _outputLines.Add(clean);
@@ -71,6 +68,9 @@ public class ManagedService
             StandardOutputEncoding = System.Text.Encoding.UTF8,
             StandardErrorEncoding = System.Text.Encoding.UTF8,
         };
+        // Output goes to a pipe, so most tools disable color unless forced
+        psi.Environment["FORCE_COLOR"] = "1";
+        psi.Environment["CLICOLOR_FORCE"] = "1";
 
         _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         _process.OutputDataReceived += (_, e) => { if (e.Data is not null) AddOutputLine(e.Data); };

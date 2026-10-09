@@ -68,7 +68,8 @@ public class ServiceManagerWindow : Window
             Application.MainLoop?.Invoke(() =>
             {
                 var current = _outputView.Text?.ToString() ?? "";
-                _outputView.Text = current.Length > 0 ? current + "\n" + line : line;
+                var clean = Ansi.Strip(line);
+                _outputView.Text = current.Length > 0 ? current + "\n" + clean : clean;
                 ScrollToBottom();
             });
         };
@@ -117,7 +118,7 @@ public class ServiceManagerWindow : Window
         if (svc is null || svc.Name == _subscribedService) return;
         _subscribedService = svc.Name;
 
-        var lines = await _client.GetOutput(svc.Name);
+        var lines = (await _client.GetOutput(svc.Name)).Select(Ansi.Strip).ToList();
         Application.MainLoop?.Invoke(() =>
         {
             var height = Math.Max(1, _outputView.Frame.Height);

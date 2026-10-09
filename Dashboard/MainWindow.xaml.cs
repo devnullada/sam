@@ -208,7 +208,12 @@ public partial class MainWindow : Window
         var segments = AnsiParser.Parse(line);
         foreach (var seg in segments)
         {
-            OutputParagraph.Inlines.Add(new Run(seg.Text) { Foreground = seg.Foreground });
+            var run = new Run(seg.Text) { Foreground = seg.Foreground };
+            if (seg.Background is not null) run.Background = seg.Background;
+            if (seg.Bold) run.FontWeight = FontWeights.Bold;
+            if (seg.Italic) run.FontStyle = FontStyles.Italic;
+            if (seg.Underline) run.TextDecorations = TextDecorations.Underline;
+            OutputParagraph.Inlines.Add(run);
         }
 
         _outputLineCount++;

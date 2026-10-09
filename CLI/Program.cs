@@ -181,7 +181,8 @@ async Task PrintOutput(string name, int lines)
         var outputLines = JsonSerializer.Deserialize<List<string>>(json, jsonOpts) ?? new();
         Console.WriteLine();
         Console.WriteLine($"  --- {name} (last {outputLines.Count} lines) ---");
-        foreach (var l in outputLines) Console.WriteLine($"  {l}");
+        // Reset after each line so an unterminated color doesn't bleed into the next
+        foreach (var l in outputLines) Console.WriteLine(Console.IsOutputRedirected ? $"  {Ansi.Strip(l)}" : $"  {l}\u001b[0m");
         Console.WriteLine($"  --- end ---");
     }
     catch { Console.WriteLine($"Failed to get output for '{name}'."); }
