@@ -104,6 +104,7 @@ services:
 | `port` | no | API port (defaults to `14040`) |
 | `name` | yes | Unique service identifier |
 | `command` | yes | Shell command to run (executed via `cmd.exe /c`) |
+| `description` | no | Free-text note shown in the dashboard tooltip, TUI info bar and `list` output |
 | `workingDirectory` | no | Working directory (relative to config file location) |
 | `autoStart` | no | Start automatically when server launches (defaults to `false`) |
 

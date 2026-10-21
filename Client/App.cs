@@ -155,7 +155,8 @@ public class ServiceManagerWindow : Window
         if (svc is null) { _infoLabel.Text = ""; return; }
         var status = svc.IsRunning ? "RUNNING" : "STOPPED";
         var pid = svc.Pid?.ToString() ?? "-";
-        _infoLabel.Text = $"PID: {pid,-8}  Uptime: {svc.Uptime,-10}  Status: {status}";
+        _infoLabel.Text = $"PID: {pid,-8}  Uptime: {svc.Uptime,-10}  Status: {status}"
+            + (string.IsNullOrWhiteSpace(svc.Description) ? "" : $"  {svc.Description}");
         _infoLabel.ColorScheme = new ColorScheme
         {
             Normal = Application.Driver.MakeAttribute(

@@ -138,13 +138,13 @@ async Task PrintStatus()
     if (services.Count == 0) { Console.WriteLine("No services or server not reachable."); return; }
 
     Console.WriteLine();
-    Console.WriteLine($"  {"Name",-24} {"Status",-10} {"PID",-8} {"Uptime"}");
-    Console.WriteLine($"  {"----",-24} {"------",-10} {"---",-8} {"------"}");
+    Console.WriteLine($"  {"Name",-24} {"Status",-10} {"PID",-8} {"Uptime",-10} {"Description"}");
+    Console.WriteLine($"  {"----",-24} {"------",-10} {"---",-8} {"------",-10} {"-----------"}");
     foreach (var s in services)
     {
         var status = s.IsRunning ? "RUNNING" : "STOPPED";
         var pid = s.Pid?.ToString() ?? "-";
-        Console.WriteLine($"  {s.Name,-24} {status,-10} {pid,-8} {s.Uptime}");
+        Console.WriteLine($"  {s.Name,-24} {status,-10} {pid,-8} {s.Uptime,-10} {s.Description}");
     }
 }
 

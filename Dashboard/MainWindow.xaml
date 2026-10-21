@@ -53,7 +53,7 @@
                              SelectionChanged="OnServiceSelected">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Grid>
+                                <Grid Background="Transparent" ToolTip="{Binding Description}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>

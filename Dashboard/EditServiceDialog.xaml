@@ -1,12 +1,13 @@
 <Window x:Class="ServiceManager.Dashboard.EditServiceDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Edit Service" Width="500" Height="300"
+        Title="Edit Service" Width="500" Height="340"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="{StaticResource PanelBg}">
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -36,6 +37,15 @@
                  BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                  CaretBrush="{StaticResource DefaultText}"/>
 
+        <!-- Description -->
+        <TextBlock Grid.Row="3" Text="Description" Foreground="{StaticResource DefaultText}"
+                   FontFamily="Consolas" FontSize="13" VerticalAlignment="Center" Margin="0,0,0,10"/>
+        <TextBox x:Name="TxtDescription" Grid.Row="3" Grid.Column="1"
+                 Background="#2d2d2d" Foreground="{StaticResource DefaultText}"
+                 FontFamily="Consolas" FontSize="13" Padding="6,4" Margin="0,0,0,10"
+                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                 CaretBrush="{StaticResource DefaultText}"/>
+
         <!-- Working Directory -->
         <TextBlock Grid.Row="2" Text="Directory" Foreground="{StaticResource DefaultText}"
                    FontFamily="Consolas" FontSize="13" VerticalAlignment="Center" Margin="0,0,0,10"/>
@@ -46,13 +56,13 @@
                  CaretBrush="{StaticResource DefaultText}"/>
 
         <!-- Auto Start -->
-        <TextBlock Grid.Row="3" Text="Auto Start" Foreground="{StaticResource DefaultText}"
+        <TextBlock Grid.Row="4" Text="Auto Start" Foreground="{StaticResource DefaultText}"
                    FontFamily="Consolas" FontSize="13" VerticalAlignment="Center" Margin="0,0,0,10"/>
-        <CheckBox x:Name="ChkAutoStart" Grid.Row="3" Grid.Column="1"
+        <CheckBox x:Name="ChkAutoStart" Grid.Row="4" Grid.Column="1"
                   VerticalAlignment="Center" Margin="0,0,0,10"/>
 
         <!-- Buttons -->
-        <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal"
+        <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button Content="Cancel" Style="{StaticResource DangerButton}" Padding="16,6"
                     Click="OnCancel" Margin="0,0,8,0"/>

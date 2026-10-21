@@ -27,6 +27,7 @@ public partial class EditServiceDialog : Window
             : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3c, 0x3c, 0x3c));
         TxtCommand.Text = entry.Command;
         TxtWorkDir.Text = entry.WorkingDirectory ?? "";
+        TxtDescription.Text = entry.Description ?? "";
         ChkAutoStart.IsChecked = entry.AutoStart;
         Title = isNew ? "New Service" : "Edit Service";
     }
@@ -38,6 +39,7 @@ public partial class EditServiceDialog : Window
             Name = TxtName.Text,
             Command = TxtCommand.Text,
             WorkingDirectory = string.IsNullOrWhiteSpace(TxtWorkDir.Text) ? null : TxtWorkDir.Text,
+            Description = string.IsNullOrWhiteSpace(TxtDescription.Text) ? null : TxtDescription.Text.Trim(),
             AutoStart = ChkAutoStart.IsChecked == true
         };
         DialogResult = true;

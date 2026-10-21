@@ -136,11 +136,12 @@ public partial class MainWindow : Window
             var existing = _items.FirstOrDefault(it => it.Name == s.Name);
             if (existing is null)
             {
-                _items.Insert(i, new ServiceItemVm(s.Name, s.IsRunning));
+                _items.Insert(i, new ServiceItemVm(s.Name, s.IsRunning, s.Description));
             }
             else
             {
                 existing.IsRunning = s.IsRunning;
+                existing.Description = string.IsNullOrWhiteSpace(s.Description) ? null : s.Description;
                 var curIdx = _items.IndexOf(existing);
                 if (curIdx != i) _items.Move(curIdx, i);
             }

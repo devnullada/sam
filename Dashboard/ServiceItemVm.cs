@@ -23,10 +23,23 @@ public sealed class ServiceItemVm : INotifyPropertyChanged
         }
     }
 
-    public ServiceItemVm(string name, bool isRunning)
+    private string? _description;
+    public string? Description
+    {
+        get => _description;
+        set
+        {
+            if (_description == value) return;
+            _description = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Description)));
+        }
+    }
+
+    public ServiceItemVm(string name, bool isRunning, string? description)
     {
         Name = name;
         _isRunning = isRunning;
+        _description = string.IsNullOrWhiteSpace(description) ? null : description;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

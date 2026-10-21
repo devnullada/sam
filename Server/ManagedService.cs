@@ -129,6 +129,7 @@ public class ManagedService
     public ServiceStatus ToStatus() => new()
     {
         Name = Name,
+        Description = _entry.Description,
         IsRunning = IsRunning,
         Pid = ProcessId,
         Uptime = StartedAt.HasValue ? (DateTime.Now - StartedAt.Value).ToString(@"hh\:mm\:ss") : "-",

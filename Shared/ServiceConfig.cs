@@ -7,6 +7,8 @@ public class ServiceEntry
 {
     public string Name { get; set; } = "";
     public string Command { get; set; } = "";
+    [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
+    public string? Description { get; set; }
     public string? WorkingDirectory { get; set; }
     public bool AutoStart { get; set; }
 }
