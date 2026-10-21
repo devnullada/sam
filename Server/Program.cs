@@ -87,6 +87,9 @@ if (!args.Contains("--foreground"))
     return;
 }
 
+// Only the --foreground process joins the job; the launcher above exits immediately.
+JobObject.AttachSelf();
+
 var config = ServiceConfig.LoadFromFile(configPath);
 var manager = new ServiceManagerCore
 {
