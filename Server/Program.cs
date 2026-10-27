@@ -32,9 +32,11 @@ if (args.Contains("--stop"))
     }
     catch { }
 
+    // Match on exe path too: managed services can have their own Server.exe
     var self = Process.GetCurrentProcess();
+    var selfPath = Environment.ProcessPath;
     var procs = Process.GetProcessesByName(self.ProcessName)
-        .Where(p => p.Id != self.Id)
+        .Where(p => p.Id != self.Id && IsSameExe(p, selfPath))
         .ToArray();
     if (procs.Length == 0) { Console.WriteLine("No running server found."); return; }
     foreach (var p in procs)
@@ -305,6 +307,13 @@ AppDomain.CurrentDomain.ProcessExit += (_, _) =>
 Console.WriteLine($"Service Manager server listening on http://localhost:{config.Port}");
 app.Run();
 manager.StopAll();
+
+static bool IsSameExe(Process p, string? exePath)
+{
+    // MainModule throws for processes we can't inspect; those aren't ours
+    try { return string.Equals(p.MainModule?.FileName, exePath, StringComparison.OrdinalIgnoreCase); }
+    catch { return false; }
+}
 
 static string ResolveConfigPath(string path)
 {
