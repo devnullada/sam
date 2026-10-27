@@ -72,6 +72,7 @@ public class ManagedService
         psi.Environment["FORCE_COLOR"] = "1";
         psi.Environment["CLICOLOR_FORCE"] = "1";
         psi.Environment.Remove("NO_COLOR");
+        psi.Environment["PATH"] = FreshPath();
 
         _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         _process.OutputDataReceived += (_, e) => { if (e.Data is not null) AddOutputLine(e.Data); };
@@ -87,6 +88,19 @@ public class ManagedService
         StartedAt = DateTime.Now;
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
+    }
+
+    // PATH as saved in the registry now, so tools installed after sam started are found;
+    // entries only this process had (from the shell that launched sam) are kept at the end
+    private static string FreshPath()
+    {
+        var saved = new[] { EnvironmentVariableTarget.Machine, EnvironmentVariableTarget.User }
+            .Select(t => Environment.GetEnvironmentVariable("Path", t) ?? "");
+        var current = Environment.GetEnvironmentVariable("PATH") ?? "";
+        var entries = saved.Append(current)
+            .SelectMany(p => p.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        return string.Join(';', entries);
     }
 
     public void Stop()
