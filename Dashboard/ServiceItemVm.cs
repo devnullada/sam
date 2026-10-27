@@ -9,7 +9,17 @@ namespace ServiceManager.Dashboard;
 /// </summary>
 public sealed class ServiceItemVm : INotifyPropertyChanged
 {
-    public string Name { get; }
+    private string _name;
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            if (_name == value) return;
+            _name = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name)));
+        }
+    }
 
     private bool _isRunning;
     public bool IsRunning
@@ -37,7 +47,7 @@ public sealed class ServiceItemVm : INotifyPropertyChanged
 
     public ServiceItemVm(string name, bool isRunning, string? description)
     {
-        Name = name;
+        _name = name;
         _isRunning = isRunning;
         _description = string.IsNullOrWhiteSpace(description) ? null : description;
     }

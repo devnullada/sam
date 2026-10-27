@@ -6,7 +6,7 @@ public class ServiceManagerCore
 {
     private readonly Dictionary<string, ManagedService> _services = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyDictionary<string, ManagedService> Services => _services;
-    public List<string> ServiceNames { get; } = new();
+    public List<string> ServiceNames { get; private set; } = new();
     public string? BaseDirectory { get; set; }
 
     public void LoadConfig(ServiceConfig config)
@@ -50,6 +50,26 @@ public class ServiceManagerCore
                 ServiceNames.Add(entry.Name);
             }
         }
+
+        Reorder(config.Services.Select(e => e.Name));
+    }
+
+    // Swapped in as a new list so a concurrent /services listing never sees it half-built
+    public void Reorder(IEnumerable<string> names)
+    {
+        ServiceNames = names.Where(_services.ContainsKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    // Re-keys the live service so its process and output survive the rename
+    public void Rename(string oldName, string newName)
+    {
+        if (!_services.Remove(oldName, out var svc)) return;
+        svc.Rename(newName);
+        _services[newName] = svc;
+        var idx = ServiceNames.FindIndex(n => n.Equals(oldName, StringComparison.OrdinalIgnoreCase));
+        if (idx >= 0) ServiceNames[idx] = newName;
     }
 
     public void StartAll(ServiceConfig config)

@@ -20,13 +20,14 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- Name (read-only) -->
+        <!-- Name -->
         <TextBlock Grid.Row="0" Text="Name" Foreground="{StaticResource DefaultText}"
                    FontFamily="Consolas" FontSize="13" VerticalAlignment="Center" Margin="0,0,0,10"/>
-        <TextBox x:Name="TxtName" Grid.Row="0" Grid.Column="1" IsReadOnly="True"
-                 Background="#3c3c3c" Foreground="{StaticResource ValueText}"
+        <TextBox x:Name="TxtName" Grid.Row="0" Grid.Column="1"
+                 Background="#2d2d2d" Foreground="{StaticResource DefaultText}"
                  FontFamily="Consolas" FontSize="13" Padding="6,4" Margin="0,0,0,10"
-                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"/>
+                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                 CaretBrush="{StaticResource DefaultText}"/>
 
         <!-- Command -->
         <TextBlock Grid.Row="1" Text="Command" Foreground="{StaticResource DefaultText}"

@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -29,6 +30,9 @@ public partial class MainWindow : Window
     private int _outputLineCount;
     private const int MaxOutputLines = 1000;
     private bool _serverOnline;
+    private Point _dragStart;
+    private ServiceItemVm? _dragItem;
+    private bool _dragging;
 
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -73,6 +77,9 @@ public partial class MainWindow : Window
             _serverOnline = online;
             UpdateServerStatus();
         }
+
+        // A refresh mid-drag would snap the dragged row back to its server position
+        if (_dragging) return;
 
         if (_serverOnline)
             await RefreshServicesAsync();
@@ -425,7 +432,27 @@ public partial class MainWindow : Window
         var dialog = new EditServiceDialog(entry) { Owner = this };
         if (dialog.ShowDialog() == true && dialog.Result is not null)
         {
-            var ok = await _client.UpdateServiceConfig(item.Name, dialog.Result);
+            var newName = dialog.Result.Name;
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                MessageBox.Show("Service name is required.", "Dashboard",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (newName != item.Name)
+            {
+                if (!await _client.RenameService(item.Name, newName))
+                {
+                    MessageBox.Show($"Failed to rename. '{newName}' may already exist.", "Dashboard",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                // Rename the row in place so the next refresh keeps it selected;
+                // the server keeps the same process, so the output stream stays valid
+                if (_subscribedService == item.Name) _subscribedService = newName;
+                item.Name = newName;
+            }
+            var ok = await _client.UpdateServiceConfig(newName, dialog.Result);
             if (!ok)
                 MessageBox.Show("Failed to save config.", "Dashboard",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -465,6 +492,80 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
+    // ── Drag to reorder ──────────────────────────────────────────
+
+    private void OnListMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // Clicks on the row's edit/delete buttons aren't drags
+        var source = e.OriginalSource as DependencyObject;
+        _dragItem = FindAncestor<Button>(source) is null
+            ? FindAncestor<ListBoxItem>(source)?.DataContext as ServiceItemVm
+            : null;
+        _dragStart = e.GetPosition(ServiceList);
+    }
+
+    private async void OnListMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragItem is null || e.LeftButton != MouseButtonState.Pressed) return;
+        var delta = e.GetPosition(ServiceList) - _dragStart;
+        if (Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+
+        var item = _dragItem;
+        _dragItem = null;
+        var original = _items.ToList();
+        _dragging = true;
+        // Blocks until drop or cancel; rows move live in OnListDragOver meanwhile
+        var result = DragDrop.DoDragDrop(ServiceList, item, DragDropEffects.Move);
+
+        if (result == DragDropEffects.None)
+        {
+            for (var i = 0; i < original.Count; i++)
+            {
+                var cur = _items.IndexOf(original[i]);
+                if (cur >= 0 && cur != i) _items.Move(cur, i);
+            }
+        }
+        else if (!_items.SequenceEqual(original))
+        {
+            // Refresh stays paused until the server has the new order
+            if (!await _client.ReorderServices(_items.Select(i => i.Name)))
+                MessageBox.Show("Failed to save service order.", "Dashboard",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        SyncServicesOrder();
+        _dragging = false;
+    }
+
+    private void OnListDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = DragDropEffects.None;
+        if (e.Data.GetData(typeof(ServiceItemVm)) is not ServiceItemVm item) return;
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext is not ServiceItemVm target
+            || target == item) return;
+        _items.Move(_items.IndexOf(item), _items.IndexOf(target));
+    }
+
+    private void OnListDrop(object sender, DragEventArgs e) => e.Handled = true;
+
+    // GetSelectedService indexes into _services, so keep it in step with the rows
+    private void SyncServicesOrder()
+    {
+        _services = _items
+            .Select(i => _services.FirstOrDefault(s => s.Name == i.Name))
+            .OfType<ServiceStatus>()
+            .ToList();
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d is not null and not T)
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+        return d as T;
+    }
+
     private ServiceStatus? GetSelectedService()
     {
         var idx = ServiceList.SelectedIndex;
@@ -474,7 +575,8 @@ public partial class MainWindow : Window
 
     private string? GetSelectedServiceName()
     {
-        return GetSelectedService()?.Name;
+        // From the row, not the last status list, so a renamed row stays selected on refresh
+        return (ServiceList.SelectedItem as ServiceItemVm)?.Name;
     }
 
     private void EnableDarkTitleBar()

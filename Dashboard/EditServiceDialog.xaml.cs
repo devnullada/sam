@@ -21,22 +21,19 @@ public partial class EditServiceDialog : Window
         var dark = 1;
         DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
         TxtName.Text = entry.Name;
-        TxtName.IsReadOnly = !isNew;
-        TxtName.Background = isNew
-            ? (System.Windows.Media.Brush)FindResource("MainBg")
-            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3c, 0x3c, 0x3c));
         TxtCommand.Text = entry.Command;
         TxtWorkDir.Text = entry.WorkingDirectory ?? "";
         TxtDescription.Text = entry.Description ?? "";
         ChkAutoStart.IsChecked = entry.AutoStart;
         Title = isNew ? "New Service" : "Edit Service";
+        Loaded += (_, _) => { TxtName.Focus(); TxtName.SelectAll(); };
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
         Result = new ServiceEntry
         {
-            Name = TxtName.Text,
+            Name = TxtName.Text.Trim(),
             Command = TxtCommand.Text,
             WorkingDirectory = string.IsNullOrWhiteSpace(TxtWorkDir.Text) ? null : TxtWorkDir.Text,
             Description = string.IsNullOrWhiteSpace(TxtDescription.Text) ? null : TxtDescription.Text.Trim(),

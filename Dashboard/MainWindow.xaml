@@ -50,7 +50,11 @@
                     <ListBox x:Name="ServiceList" Background="Transparent"
                              BorderThickness="0" Foreground="{StaticResource DefaultText}"
                              FontFamily="Consolas" FontSize="17"
-                             SelectionChanged="OnServiceSelected">
+                             SelectionChanged="OnServiceSelected" AllowDrop="True"
+                             PreviewMouseLeftButtonDown="OnListMouseDown"
+                             PreviewMouseMove="OnListMouseMove"
+                             DragOver="OnListDragOver"
+                             Drop="OnListDrop">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid Background="Transparent" ToolTip="{Binding Description}">

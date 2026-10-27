@@ -264,6 +264,47 @@ app.MapPut("/services/{name}/config", async (string name, HttpContext ctx) =>
     return Results.Json(new { ok = true }, jsonOpts);
 });
 
+app.MapPost("/services/{name}/rename", async (string name, HttpContext ctx) =>
+{
+    var body = await ctx.Request.ReadFromJsonAsync<RenameRequest>(jsonOpts);
+    var newName = body?.Name?.Trim();
+    if (string.IsNullOrEmpty(newName)) return Results.BadRequest(new { error = "New name is required" });
+
+    var cfg = ServiceConfig.LoadFromFile(fullConfigPath);
+    var idx = cfg.Services.FindIndex(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    if (idx < 0) return Results.NotFound(new { error = $"Service '{name}' not found" });
+    // Case-only renames of the same service are allowed
+    if (cfg.Services.Where((s, i) => i != idx).Any(s => s.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
+        return Results.Conflict(new { error = $"Service '{newName}' already exists" });
+
+    // Rename in memory before saving, so the config reload sees an existing service
+    // instead of stopping the old one and adding a new stopped one
+    manager.Rename(cfg.Services[idx].Name, newName);
+    cfg.Services[idx].Name = newName;
+    cfg.SaveToFile(fullConfigPath);
+    return Results.Json(new { ok = true }, jsonOpts);
+});
+
+app.MapPut("/services/order", async (HttpContext ctx) =>
+{
+    var names = await ctx.Request.ReadFromJsonAsync<List<string>>(jsonOpts);
+    if (names is null) return Results.BadRequest(new { error = "Expected a list of service names" });
+
+    var cfg = ServiceConfig.LoadFromFile(fullConfigPath);
+    // OrderBy is stable, so services missing from the list keep their relative order at the end
+    cfg.Services = cfg.Services
+        .OrderBy(s =>
+        {
+            var i = names.FindIndex(n => n.Equals(s.Name, StringComparison.OrdinalIgnoreCase));
+            return i < 0 ? int.MaxValue : i;
+        })
+        .ToList();
+
+    manager.Reorder(cfg.Services.Select(s => s.Name));
+    cfg.SaveToFile(fullConfigPath);
+    return Results.Json(new { ok = true }, jsonOpts);
+});
+
 // Watch services.yaml for changes
 var watcher = new FileSystemWatcher(Path.GetDirectoryName(fullConfigPath)!, Path.GetFileName(fullConfigPath))
 {
@@ -332,3 +373,5 @@ static string ResolveConfigPath(string path)
 
     return path;
 }
+
+record RenameRequest(string? Name);

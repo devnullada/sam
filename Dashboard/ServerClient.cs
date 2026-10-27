@@ -76,6 +76,26 @@ public class ServerClient : IDisposable
         catch { return false; }
     }
 
+    public async Task<bool> RenameService(string name, string newName)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/services/{name}/rename", new { name = newName }, _jsonOpts);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    public async Task<bool> ReorderServices(IEnumerable<string> names)
+    {
+        try
+        {
+            var resp = await _http.PutAsJsonAsync("/services/order", names, _jsonOpts);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
     public async Task<bool> CreateService(ServiceEntry entry)
     {
         try

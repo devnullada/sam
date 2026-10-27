@@ -38,11 +38,11 @@ Or launch the Dashboard — it can start/stop the server itself.
 The WPF Dashboard provides a visual interface for managing services:
 
 - **Start/Stop Server** — launch or shut down the server directly from the dashboard
-- **Service list** — shows all services with running/stopped status indicators
+- **Service list** — shows all services with running/stopped status indicators; drag to reorder
 - **Service controls** — start, stop, restart individual services or all at once
 - **Live output** — real-time service output with ANSI color support
 - **Copy/Clear output** — copy output to clipboard or clear the output window
-- **Edit Config** — edit a service's command, working directory, and auto-start setting
+- **Edit Config** — edit a service's name (renames keep it running), command, working directory, and auto-start setting
 - **New/Delete Service** — add or remove services from the config
 - **Server status indicator** — shows whether the server is online or offline
 - **Persistent window state** — remembers window position, size, and maximized state across restarts
@@ -58,6 +58,7 @@ sam start <name|all>    Start a service
 sam stop <name|all>     Stop a service
 sam restart <name>      Restart a service
 sam output <name> [n]   Show last n output lines (default 30)
+sam rename <old> <new>  Rename a service (quote names with spaces)
 sam client              Start TUI client
 sam server              Start server in background
 sam server stop         Stop the server (kills all managed services)
@@ -122,6 +123,8 @@ The server exposes a REST + WebSocket API on `http://localhost:{port}`.
 | `GET` | `/services` | List all services with status, PID, uptime |
 | `POST` | `/services` | Create a new service |
 | `DELETE` | `/services/{name}` | Delete a service |
+| `PUT` | `/services/order` | Reorder services (JSON array of names) |
+| `POST` | `/services/{name}/rename` | Rename a service (`{"name": "new"}`); keeps it running |
 | `POST` | `/services/{name}/start` | Start a service |
 | `POST` | `/services/{name}/stop` | Stop a service |
 | `POST` | `/services/{name}/restart` | Restart a service |

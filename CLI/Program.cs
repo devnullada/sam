@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Http.Json;
 using System.Text.Json;
 using ServiceManager.Shared;
 
@@ -32,6 +33,9 @@ switch (subcommand)
     case "output":
         await RunCommand(args);
         break;
+    case "rename":
+        await Rename(args.Skip(1).ToArray());
+        break;
     case "":
     case "help":
         PrintHelp();
@@ -56,6 +60,7 @@ void PrintHelp()
     Console.WriteLine("  sam stop <name|all>     Stop a service");
     Console.WriteLine("  sam restart <name>      Restart a service");
     Console.WriteLine("  sam output <name> [n]   Show last n output lines (default 30)");
+    Console.WriteLine("  sam rename <old> <new>  Rename a service (quote names with spaces)");
     Console.WriteLine("  sam client              Start TUI client");
     Console.WriteLine("  sam server              Start server in background");
     Console.WriteLine("  sam server stop         Stop the server");
@@ -130,6 +135,23 @@ async Task RunCommand(string[] parts)
             else Console.WriteLine("Usage: sam output <name> [lines]");
             break;
     }
+}
+
+async Task Rename(string[] names)
+{
+    if (names.Length != 2) { Console.WriteLine("Usage: sam rename <old> <new>  (quote names with spaces)"); return; }
+    var (oldName, newName) = (names[0], names[1]);
+    try
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var resp = await http.PostAsJsonAsync($"http://localhost:{port}/services/{Uri.EscapeDataString(oldName)}/rename",
+            new { name = newName }, jsonOpts);
+        if (resp.IsSuccessStatusCode) { Console.WriteLine($"Renamed {oldName} to {newName}."); return; }
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Console.WriteLine(doc.RootElement.TryGetProperty("error", out var err) ? err.GetString() : $"Rename failed ({(int)resp.StatusCode}).");
+    }
+    catch (JsonException) { Console.WriteLine("Rename failed."); }
+    catch { Console.WriteLine("Server not reachable."); }
 }
 
 async Task PrintStatus()

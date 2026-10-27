@@ -27,6 +27,18 @@ public class ManagedService
 
     public void UpdateEntry(ServiceEntry entry) { _entry = entry; }
 
+    public void Rename(string newName)
+    {
+        _entry = new ServiceEntry
+        {
+            Name = newName,
+            Command = _entry.Command,
+            Description = _entry.Description,
+            WorkingDirectory = _entry.WorkingDirectory,
+            AutoStart = _entry.AutoStart,
+        };
+    }
+
     public string? BaseDirectory { get; set; }
 
     public void ClearOutput()
