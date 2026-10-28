@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0a2a45"/>
+      <stop offset="1" stop-color="#041526"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff4c2" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffd54a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="256" height="256" rx="48" fill="url(#sea)"/>
+  <!-- Beams -->
+  <polygon points="128,64 24,40 24,88" fill="#ffe27a" opacity="0.35"/>
+  <polygon points="128,64 232,40 232,88" fill="#ffe27a" opacity="0.35"/>
+  <!-- Glow -->
+  <circle cx="128" cy="64" r="52" fill="url(#glow)"/>
+  <!-- Tower: three horizontal bars, widening downwards -->
+  <rect x="96" y="112" width="64" height="20" rx="6" fill="#f2f6f9"/>
+  <rect x="84" y="152" width="88" height="20" rx="6" fill="#f2f6f9"/>
+  <rect x="72" y="192" width="112" height="20" rx="6" fill="#f2f6f9"/>
+  <!-- Light -->
+  <circle cx="128" cy="64" r="20" fill="#ffe27a"/>
+</svg>
