@@ -14,6 +14,7 @@
         <SolidColorBrush x:Key="HeaderText" Color="#7a689c"/>
         <SolidColorBrush x:Key="RunningText" Color="#55d659"/>
         <SolidColorBrush x:Key="StoppedText" Color="#f14c4c"/>
+        <SolidColorBrush x:Key="AutoStartText" Color="#3794ff"/>
 
         <!-- Button style -->
         <Style x:Key="ToolbarButton" TargetType="Button">

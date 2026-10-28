@@ -66,6 +66,9 @@
                                         <TextBlock x:Name="Dot" Text="&#x25CF;" Margin="4,0,10,0" VerticalAlignment="Center"
                                                    Foreground="{StaticResource RunningText}"/>
                                         <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="AutoStartIcon" Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                   Margin="8,0,0,0" VerticalAlignment="Center" ToolTip="Auto start"
+                                                   Foreground="{StaticResource AutoStartText}" Visibility="Collapsed"/>
                                     </StackPanel>
                                     <StackPanel x:Name="RowActions" Grid.Column="1" Orientation="Horizontal"
                                                 VerticalAlignment="Center" Visibility="Hidden">
@@ -83,6 +86,9 @@
                                     <DataTrigger Binding="{Binding IsRunning}" Value="False">
                                         <Setter TargetName="Dot" Property="Text" Value="&#x25CB;"/>
                                         <Setter TargetName="Dot" Property="Foreground" Value="{StaticResource BorderBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding AutoStart}" Value="True">
+                                        <Setter TargetName="AutoStartIcon" Property="Visibility" Value="Visible"/>
                                     </DataTrigger>
                                     <DataTrigger Value="True"
                                                  Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}">

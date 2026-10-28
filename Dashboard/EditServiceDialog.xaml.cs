@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
 using ServiceManager.Shared;
 
@@ -27,6 +28,14 @@ public partial class EditServiceDialog : Window
         ChkAutoStart.IsChecked = entry.AutoStart;
         Title = isNew ? "New Service" : "Edit Service";
         Loaded += (_, _) => { TxtName.Focus(); TxtName.SelectAll(); };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                OnSave(this, new RoutedEventArgs());
+            }
+        };
     }
 
     private void OnSave(object sender, RoutedEventArgs e)

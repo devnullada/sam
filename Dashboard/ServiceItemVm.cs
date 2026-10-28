@@ -45,11 +45,24 @@ public sealed class ServiceItemVm : INotifyPropertyChanged
         }
     }
 
-    public ServiceItemVm(string name, bool isRunning, string? description)
+    private bool _autoStart;
+    public bool AutoStart
+    {
+        get => _autoStart;
+        set
+        {
+            if (_autoStart == value) return;
+            _autoStart = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AutoStart)));
+        }
+    }
+
+    public ServiceItemVm(string name, bool isRunning, string? description, bool autoStart)
     {
         _name = name;
         _isRunning = isRunning;
         _description = string.IsNullOrWhiteSpace(description) ? null : description;
+        _autoStart = autoStart;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
