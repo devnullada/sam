@@ -117,17 +117,17 @@ async Task RunCommand(string[] parts)
     switch (cmd)
     {
         case "start":
-            if (arg == "all") { await Post("/services/start-all"); Console.WriteLine("Started all."); }
-            else if (arg is not null) { await Post($"/services/{escaped}/start"); Console.WriteLine($"Started {arg}."); }
+            if (arg == "all") { if (await Post("/services/start-all")) Console.WriteLine("Started all."); }
+            else if (arg is not null) { if (await Post($"/services/{escaped}/start")) Console.WriteLine($"Started {arg}."); }
             else Console.WriteLine("Usage: sam start <name|all>");
             break;
         case "stop":
-            if (arg == "all") { await Post("/services/stop-all"); Console.WriteLine("Stopped all."); }
-            else if (arg is not null) { await Post($"/services/{escaped}/stop"); Console.WriteLine($"Stopped {arg}."); }
+            if (arg == "all") { if (await Post("/services/stop-all")) Console.WriteLine("Stopped all."); }
+            else if (arg is not null) { if (await Post($"/services/{escaped}/stop")) Console.WriteLine($"Stopped {arg}."); }
             else Console.WriteLine("Usage: sam stop <name|all>");
             break;
         case "restart":
-            if (arg is not null) { await Post($"/services/{escaped}/restart"); Console.WriteLine($"Restarted {arg}."); }
+            if (arg is not null) { if (await Post($"/services/{escaped}/restart")) Console.WriteLine($"Restarted {arg}."); }
             else Console.WriteLine("Usage: sam restart <name>");
             break;
         case "output":
@@ -223,14 +223,19 @@ async Task<List<ServiceStatus>> GetServices()
     catch { return new(); }
 }
 
-async Task Post(string path)
+async Task<bool> Post(string path)
 {
     try
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        await http.PostAsync($"http://localhost:{port}{path}", null);
+        var resp = await http.PostAsync($"http://localhost:{port}{path}", null);
+        if (resp.IsSuccessStatusCode) return true;
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Console.WriteLine(doc.RootElement.TryGetProperty("error", out var err) ? err.GetString() : $"Failed ({(int)resp.StatusCode}).");
+        return false;
     }
-    catch { Console.WriteLine("Server not reachable."); }
+    catch (JsonException) { Console.WriteLine("Failed."); return false; }
+    catch { Console.WriteLine("Server not reachable."); return false; }
 }
 
 void LaunchProject(string project, string[] extraArgs, bool wait = false)

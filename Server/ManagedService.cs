@@ -86,20 +86,22 @@ public class ManagedService
         psi.Environment.Remove("NO_COLOR");
         psi.Environment["PATH"] = FreshPath();
 
-        _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        _process.OutputDataReceived += (_, e) => { if (e.Data is not null) AddOutputLine(e.Data); };
-        _process.ErrorDataReceived += (_, e) => { if (e.Data is not null) AddOutputLine(e.Data); };
-        _process.Exited += (_, _) =>
+        var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        proc.OutputDataReceived += (_, e) => { if (e.Data is not null) AddOutputLine(e.Data); };
+        proc.ErrorDataReceived += (_, e) => { if (e.Data is not null) AddOutputLine(e.Data); };
+        // Only this process's own exit clears the field: on a restart the old one's Exited fires
+        // after Start has already put the new one there, and must not drop or dispose it
+        proc.Exited += (_, _) =>
         {
-            var proc = _process;
-            _process = null;
+            if (Interlocked.CompareExchange(ref _process, null, proc) != proc) return;
             StartedAt = null;
-            proc?.Dispose();
+            proc.Dispose();
         };
-        _process.Start();
+        _process = proc;
+        proc.Start();
         StartedAt = DateTime.Now;
-        _process.BeginOutputReadLine();
-        _process.BeginErrorReadLine();
+        proc.BeginOutputReadLine();
+        proc.BeginErrorReadLine();
     }
 
     // PATH as saved in the registry now, so tools installed after sam started are found;
