@@ -146,7 +146,7 @@
                              HorizontalScrollBarVisibility="Auto"
                              Padding="8,4">
                     <RichTextBox.Document>
-                        <FlowDocument PageWidth="10000">
+                        <FlowDocument>
                             <Paragraph x:Name="OutputParagraph"/>
                         </FlowDocument>
                     </RichTextBox.Document>

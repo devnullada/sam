@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ServiceItemVm> _items = [];
     private string? _subscribedService;
     private int _outputLineCount;
+    private double _maxLineWidth;
     private const int MaxOutputLines = 1000;
     private bool _serverOnline;
     private Point _dragStart;
@@ -116,6 +117,7 @@ public partial class MainWindow : Window
         _subscribedService = null;
         OutputParagraph.Inlines.Clear();
         _outputLineCount = 0;
+        ResetOutputWidth();
         PidText.Text = "-";
         UptimeText.Text = "-";
         StatusText.Text = "-";
@@ -187,6 +189,7 @@ public partial class MainWindow : Window
         var lines = await _client.GetOutput(svc.Name);
         OutputParagraph.Inlines.Clear();
         _outputLineCount = 0;
+        ResetOutputWidth();
 
         foreach (var line in lines)
         {
@@ -226,6 +229,24 @@ public partial class MainWindow : Window
         }
 
         _outputLineCount++;
+        FitOutputWidth(string.Concat(segments.Select(seg => seg.Text)));
+    }
+
+    // No wrapping: page is as wide as the longest line, so the horizontal scrollbar only shows on real overflow.
+    private void FitOutputWidth(string text)
+    {
+        var width = new FormattedText(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+            new Typeface(OutputBox.FontFamily, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+            OutputBox.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(this).PixelsPerDip).WidthIncludingTrailingWhitespace;
+        if (width <= _maxLineWidth) return;
+        _maxLineWidth = width;
+        OutputBox.Document.PageWidth = width + 20;
+    }
+
+    private void ResetOutputWidth()
+    {
+        _maxLineWidth = 0;
+        OutputBox.Document.PageWidth = double.NaN;
     }
 
     private void TrimOutputLines()
@@ -406,6 +427,7 @@ public partial class MainWindow : Window
     {
         OutputParagraph.Inlines.Clear();
         _outputLineCount = 0;
+        ResetOutputWidth();
         var svc = GetSelectedService();
         if (svc is not null)
             await _client.ClearOutput(svc.Name);
