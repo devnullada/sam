@@ -119,8 +119,14 @@ public class ManagedService
 
     public void Stop()
     {
-        if (!IsRunning || _process is null) return;
-        var pid = _process.Id;
+        // Take the process out of the field first, so its Exited handler (which fires while
+        // taskkill is waiting) neither nulls nor disposes it under us
+        var proc = Interlocked.Exchange(ref _process, null);
+        if (proc is null) return;
+        StartedAt = null;
+        int pid;
+        try { if (proc.HasExited) { proc.Dispose(); return; } pid = proc.Id; }
+        catch { proc.Dispose(); return; }
 
         // Use taskkill /T to kill the entire process tree — more reliable
         // than Process.Kill(entireProcessTree) for apps like Electron
@@ -145,11 +151,9 @@ public class ManagedService
         catch { }
 
         // Fallback
-        try { _process.Kill(entireProcessTree: true); } catch { }
+        try { proc.Kill(entireProcessTree: true); } catch { }
 
-        _process.Dispose();
-        _process = null;
-        StartedAt = null;
+        proc.Dispose();
     }
 
     public void Restart() { Stop(); Start(); }
