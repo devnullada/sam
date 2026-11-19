@@ -1,0 +1,307 @@
+using System.Diagnostics;
+using System.Net.Http.Json;
+using System.Text.Json;
+using ServiceManager.Shared;
+
+var jsonOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+var configPath = ResolveConfigPath("services.yaml");
+var port = 14040;
+if (File.Exists(configPath))
+{
+    try { port = ServiceConfig.LoadFromFile(configPath).Port; } catch { }
+}
+
+var subcommand = args.Length > 0 ? args[0].ToLower() : "";
+
+switch (subcommand)
+{
+    case "server":
+        await HandleServer(args.Skip(1).ToArray());
+        break;
+    case "client":
+        LaunchProject("Client", args.Skip(1).ToArray(), wait: true);
+        break;
+    case "status":
+        await ShowServerStatus();
+        break;
+    case "list":
+        await PrintStatus();
+        break;
+    case "start":
+    case "stop":
+    case "restart":
+    case "output":
+        await RunCommand(args);
+        break;
+    case "rename":
+        await Rename(args.Skip(1).ToArray());
+        break;
+    case "":
+    case "help":
+        PrintHelp();
+        break;
+    default:
+        Console.WriteLine($"Unknown command: {subcommand}");
+        Console.WriteLine("Run 'sam help' for usage.");
+        break;
+}
+
+return;
+
+void PrintHelp()
+{
+    Console.WriteLine("sam - Service Manager");
+    Console.WriteLine();
+    Console.WriteLine("Usage:");
+    Console.WriteLine("  sam                     Show this help");
+    Console.WriteLine("  sam status              Show server status");
+    Console.WriteLine("  sam list                List services and their status");
+    Console.WriteLine("  sam start <name|all>    Start a service");
+    Console.WriteLine("  sam stop <name|all>     Stop a service");
+    Console.WriteLine("  sam restart <name>      Restart a service");
+    Console.WriteLine("  sam output <name> [n]   Show last n output lines (default 30)");
+    Console.WriteLine("  sam rename <old> <new>  Rename a service (quote names with spaces)");
+    Console.WriteLine("  sam client              Start TUI client");
+    Console.WriteLine("  sam server              Start server in background");
+    Console.WriteLine("  sam server stop         Stop the server");
+    Console.WriteLine("  sam server restart      Restart the server");
+    Console.WriteLine("  sam server foreground   Run server in foreground (debug)");
+    Console.WriteLine("  sam server install      Auto-start server at Windows login");
+    Console.WriteLine("  sam server uninstall    Remove auto-start");
+    Console.WriteLine("  sam help                Show this help");
+}
+
+// ── Server subcommand ──────────────────────────────────────────
+
+async Task HandleServer(string[] serverArgs)
+{
+    var sub = serverArgs.Length > 0 ? serverArgs[0].ToLower() : "";
+
+    switch (sub)
+    {
+        case "restart":
+            LaunchProject("Server", ["--stop"]);
+            await Task.Delay(1000);
+            LaunchProject("Server", []);
+            break;
+        case "stop":
+            LaunchProject("Server", ["--stop"]);
+            break;
+        case "install":
+            LaunchProject("Server", ["--install"]);
+            break;
+        case "uninstall":
+            LaunchProject("Server", ["--uninstall"]);
+            break;
+        case "foreground":
+            LaunchProject("Server", ["--foreground"], wait: true);
+            break;
+        default:
+            LaunchProject("Server", []);
+            break;
+    }
+}
+
+// ── Commands ───────────────────────────────────────────────────
+
+async Task RunCommand(string[] parts)
+{
+    var cmd = parts[0].ToLower();
+    var rest = parts.Skip(1).SelectMany(p => p.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToList();
+    // `output` takes an optional trailing line count; everything else is the (possibly multi-word) service name
+    var count = 30;
+    if (cmd == "output" && rest.Count > 1 && int.TryParse(rest[^1], out var n)) { count = n; rest.RemoveAt(rest.Count - 1); }
+    var arg = rest.Count > 0 ? string.Join(' ', rest) : null;
+    var escaped = arg is null ? null : Uri.EscapeDataString(arg);
+
+    switch (cmd)
+    {
+        case "start":
+            if (arg == "all") { if (await Post("/services/start-all")) Console.WriteLine("Started all."); }
+            else if (arg is not null) { if (await Post($"/services/{escaped}/start")) Console.WriteLine($"Started {arg}."); }
+            else Console.WriteLine("Usage: sam start <name|all>");
+            break;
+        case "stop":
+            if (arg == "all") { if (await Post("/services/stop-all")) Console.WriteLine("Stopped all."); }
+            else if (arg is not null) { if (await Post($"/services/{escaped}/stop")) Console.WriteLine($"Stopped {arg}."); }
+            else Console.WriteLine("Usage: sam stop <name|all>");
+            break;
+        case "restart":
+            if (arg is not null) { if (await Post($"/services/{escaped}/restart")) Console.WriteLine($"Restarted {arg}."); }
+            else Console.WriteLine("Usage: sam restart <name>");
+            break;
+        case "output":
+            if (arg is not null) await PrintOutput(arg, count);
+            else Console.WriteLine("Usage: sam output <name> [lines]");
+            break;
+    }
+}
+
+async Task Rename(string[] names)
+{
+    if (names.Length != 2) { Console.WriteLine("Usage: sam rename <old> <new>  (quote names with spaces)"); return; }
+    var (oldName, newName) = (names[0], names[1]);
+    try
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var resp = await http.PostAsJsonAsync($"http://localhost:{port}/services/{Uri.EscapeDataString(oldName)}/rename",
+            new { name = newName }, jsonOpts);
+        if (resp.IsSuccessStatusCode) { Console.WriteLine($"Renamed {oldName} to {newName}."); return; }
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Console.WriteLine(doc.RootElement.TryGetProperty("error", out var err) ? err.GetString() : $"Rename failed ({(int)resp.StatusCode}).");
+    }
+    catch (JsonException) { Console.WriteLine("Rename failed."); }
+    catch { Console.WriteLine("Server not reachable."); }
+}
+
+async Task PrintStatus()
+{
+    var services = await GetServices();
+    if (services.Count == 0) { Console.WriteLine("No services or server not reachable."); return; }
+
+    Console.WriteLine();
+    Console.WriteLine($"  {"Name",-24} {"Status",-10} {"PID",-8} {"Uptime",-10} {"Description"}");
+    Console.WriteLine($"  {"----",-24} {"------",-10} {"---",-8} {"------",-10} {"-----------"}");
+    foreach (var s in services)
+    {
+        var status = s.IsRunning ? "RUNNING" : "STOPPED";
+        var pid = s.Pid?.ToString() ?? "-";
+        Console.WriteLine($"  {s.Name,-24} {status,-10} {pid,-8} {s.Uptime,-10} {s.Description}");
+    }
+}
+
+async Task ShowServerStatus()
+{
+    try
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        var resp = await http.GetAsync($"http://localhost:{port}/health");
+        if (resp.IsSuccessStatusCode)
+        {
+            var services = await GetServices();
+            var running = services.Count(s => s.IsRunning);
+            Console.WriteLine($"  Server:   running on port {port}");
+            Console.WriteLine($"  Services: {running}/{services.Count} running");
+        }
+        else
+        {
+            Console.WriteLine($"  Server:   not running (port {port})");
+        }
+    }
+    catch
+    {
+        Console.WriteLine($"  Server:   not running (port {port})");
+    }
+}
+
+async Task PrintOutput(string name, int lines)
+{
+    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+    try
+    {
+        var json = await http.GetStringAsync($"http://localhost:{port}/services/{Uri.EscapeDataString(name)}/output?lines={lines}");
+        var outputLines = JsonSerializer.Deserialize<List<string>>(json, jsonOpts) ?? new();
+        Console.WriteLine();
+        Console.WriteLine($"  --- {name} (last {outputLines.Count} lines) ---");
+        // Reset after each line so an unterminated color doesn't bleed into the next
+        foreach (var l in outputLines) Console.WriteLine(Console.IsOutputRedirected ? $"  {Ansi.Strip(l)}" : $"  {l}\u001b[0m");
+        Console.WriteLine($"  --- end ---");
+    }
+    catch { Console.WriteLine($"Failed to get output for '{name}'."); }
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+
+async Task<List<ServiceStatus>> GetServices()
+{
+    try
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        var json = await http.GetStringAsync($"http://localhost:{port}/services");
+        return JsonSerializer.Deserialize<List<ServiceStatus>>(json, jsonOpts) ?? new();
+    }
+    catch { return new(); }
+}
+
+async Task<bool> Post(string path)
+{
+    try
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var resp = await http.PostAsync($"http://localhost:{port}{path}", null);
+        if (resp.IsSuccessStatusCode) return true;
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        Console.WriteLine(doc.RootElement.TryGetProperty("error", out var err) ? err.GetString() : $"Failed ({(int)resp.StatusCode}).");
+        return false;
+    }
+    catch (JsonException) { Console.WriteLine("Failed."); return false; }
+    catch { Console.WriteLine("Server not reachable."); return false; }
+}
+
+void LaunchProject(string project, string[] extraArgs, bool wait = false)
+{
+    var solutionDir = FindSolutionDir();
+    var exe = Path.Combine(solutionDir, project, "bin", "Debug", "net9.0", $"{project}.exe");
+
+    if (!File.Exists(exe))
+    {
+        var buildPsi = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"build \"{Path.Combine(solutionDir, project, $"{project}.csproj")}\" --verbosity quiet",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        Process.Start(buildPsi)?.WaitForExit();
+    }
+
+    var arguments = string.Join(" ", extraArgs.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+    var psi = new ProcessStartInfo
+    {
+        FileName = exe,
+        Arguments = arguments,
+        WorkingDirectory = solutionDir,
+        UseShellExecute = false,
+    };
+
+    var proc = Process.Start(psi);
+    if (wait) proc?.WaitForExit();
+}
+
+string FindSolutionDir()
+{
+    // Walk up from exe location
+    var dir = AppDomain.CurrentDomain.BaseDirectory;
+    for (int i = 0; i < 10; i++)
+    {
+        if (File.Exists(Path.Combine(dir, "ServiceManager.sln"))) return dir;
+        var parent = Directory.GetParent(dir);
+        if (parent is null) break;
+        dir = parent.FullName;
+    }
+    // Walk up from cwd
+    dir = Directory.GetCurrentDirectory();
+    for (int i = 0; i < 10; i++)
+    {
+        if (File.Exists(Path.Combine(dir, "ServiceManager.sln"))) return dir;
+        var parent = Directory.GetParent(dir);
+        if (parent is null) break;
+        dir = parent.FullName;
+    }
+    return Directory.GetCurrentDirectory();
+}
+
+static string ResolveConfigPath(string path)
+{
+    if (Path.IsPathRooted(path) || File.Exists(path)) return path;
+    var dir = Directory.GetCurrentDirectory();
+    for (int i = 0; i < 5; i++)
+    {
+        var candidate = Path.Combine(dir, path);
+        if (File.Exists(candidate)) return candidate;
+        var parent = Directory.GetParent(dir);
+        if (parent is null) break;
+        dir = parent.FullName;
+    }
+    return path;
+}

@@ -1,0 +1,12 @@
+port: 14040
+
+services:
+  - name: my-frontend
+    command: npm run dev
+    workingDirectory: ../my-frontend
+    autoStart: true
+
+  - name: my-backend
+    command: npm run dev
+    workingDirectory: ../my-backend
+    autoStart: false

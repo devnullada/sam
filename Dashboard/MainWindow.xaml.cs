@@ -1,0 +1,642 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Threading;
+using ServiceManager.Shared;
+
+namespace ServiceManager.Dashboard;
+
+public partial class MainWindow : Window
+{
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmSetWindowAttribute(nint hwnd, int attr, ref int value, int size);
+
+    private readonly ServerClient _client;
+    private readonly string _configPath;
+    private readonly DispatcherTimer _timer;
+    private List<ServiceStatus> _services = [];
+    private readonly ObservableCollection<ServiceItemVm> _items = [];
+    private string? _subscribedService;
+    private int _outputLineCount;
+    private double _maxLineWidth;
+    private const int MaxOutputLines = 1000;
+    private bool _serverOnline;
+    private Point _dragStart;
+    private ServiceItemVm? _dragItem;
+    private bool _dragging;
+
+    private static readonly string SettingsPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ServiceManager", "dashboard.json");
+
+    public MainWindow(ServerClient client, string configPath)
+    {
+        InitializeComponent();
+        EnableDarkTitleBar();
+        _client = client;
+        _configPath = configPath;
+        ServiceList.ItemsSource = _items;
+
+        RestoreWindowBounds();
+
+        _client.OutputLineReceived += OnOutputLineReceived;
+
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _timer.Tick += async (_, _) => await RefreshAsync();
+        _timer.Start();
+
+        Loaded += async (_, _) =>
+        {
+            await RefreshAsync();
+            if (ServiceList.Items.Count > 0)
+                ServiceList.SelectedIndex = 0;
+        };
+
+        Closed += (_, _) =>
+        {
+            SaveWindowBounds();
+            _timer.Stop();
+            _client.Dispose();
+        };
+    }
+
+    private async Task RefreshAsync()
+    {
+        var online = await _client.HealthCheck();
+        if (online != _serverOnline)
+        {
+            _serverOnline = online;
+            UpdateServerStatus();
+        }
+
+        // A refresh mid-drag would snap the dragged row back to its server position
+        if (_dragging) return;
+
+        if (_serverOnline)
+            await RefreshServicesAsync();
+        else
+            ClearServices();
+    }
+
+    private void UpdateServerStatus()
+    {
+        if (_serverOnline)
+        {
+            ServerStatusIcon.Foreground = (Brush)FindResource("RunningText");
+            ServerStatusText.Foreground = (Brush)FindResource("RunningText");
+            ServerStatusText.Text = "SERVER ONLINE";
+        }
+        else
+        {
+            ServerStatusIcon.Foreground = (Brush)FindResource("StoppedText");
+            ServerStatusText.Foreground = (Brush)FindResource("StoppedText");
+            ServerStatusText.Text = "SERVER OFFLINE";
+        }
+
+        BtnStartServer.IsEnabled = !_serverOnline;
+        BtnStopServer.IsEnabled = _serverOnline;
+        UpdateButtonStates();
+    }
+
+    private void ClearServices()
+    {
+        _services = [];
+        ServiceList.SelectionChanged -= OnServiceSelected;
+        _items.Clear();
+        ServiceList.SelectionChanged += OnServiceSelected;
+        _subscribedService = null;
+        OutputParagraph.Inlines.Clear();
+        _outputLineCount = 0;
+        ResetOutputWidth();
+        PidText.Text = "-";
+        UptimeText.Text = "-";
+        StatusText.Text = "-";
+        StatusText.Foreground = (Brush)FindResource("DefaultText");
+        UpdateButtonStates();
+    }
+
+    private async Task RefreshServicesAsync()
+    {
+        var services = await _client.GetServices();
+        var selectedName = GetSelectedServiceName();
+        var previousIndex = ServiceList.SelectedIndex;
+
+        _services = services;
+
+        // Reconcile the stable collection in place so periodic refreshes don't
+        // rebuild rows (which would reset hover/selection every tick).
+        ServiceList.SelectionChanged -= OnServiceSelected;
+        for (var i = _items.Count - 1; i >= 0; i--)
+            if (!services.Any(s => s.Name == _items[i].Name))
+                _items.RemoveAt(i);
+        for (var i = 0; i < services.Count; i++)
+        {
+            var s = services[i];
+            var existing = _items.FirstOrDefault(it => it.Name == s.Name);
+            if (existing is null)
+            {
+                _items.Insert(i, new ServiceItemVm(s.Name, s.IsRunning, s.Description, s.AutoStart));
+            }
+            else
+            {
+                existing.IsRunning = s.IsRunning;
+                existing.AutoStart = s.AutoStart;
+                existing.Description = string.IsNullOrWhiteSpace(s.Description) ? null : s.Description;
+                var curIdx = _items.IndexOf(existing);
+                if (curIdx != i) _items.Move(curIdx, i);
+            }
+        }
+
+        if (selectedName != null)
+        {
+            var idx = _services.FindIndex(s => s.Name == selectedName);
+            if (idx >= 0) ServiceList.SelectedIndex = idx;
+        }
+        else if (previousIndex >= 0 && previousIndex < _items.Count)
+        {
+            ServiceList.SelectedIndex = previousIndex;
+        }
+
+        ServiceList.SelectionChanged += OnServiceSelected;
+        UpdateInfoBar();
+        UpdateButtonStates();
+    }
+
+    private void OnServiceSelected(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateInfoBar();
+        UpdateButtonStates();
+        _ = SwitchOutputSubscription();
+    }
+
+    private async Task SwitchOutputSubscription(bool force = false)
+    {
+        var svc = GetSelectedService();
+        if (svc is null) return;
+        if (!force && svc.Name == _subscribedService) return;
+        _subscribedService = svc.Name;
+
+        var lines = await _client.GetOutput(svc.Name);
+        OutputParagraph.Inlines.Clear();
+        _outputLineCount = 0;
+        ResetOutputWidth();
+
+        foreach (var line in lines)
+        {
+            AppendOutputLine(line);
+        }
+        ScrollOutputToBottom();
+
+        await _client.SubscribeOutput(svc.Name);
+    }
+
+    private void OnOutputLineReceived(string line)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            AppendOutputLine(line);
+            TrimOutputLines();
+
+            if (IsScrolledToBottom())
+                ScrollOutputToBottom();
+        });
+    }
+
+    private void AppendOutputLine(string line)
+    {
+        if (_outputLineCount > 0)
+            OutputParagraph.Inlines.Add(new LineBreak());
+
+        var segments = AnsiParser.Parse(line);
+        foreach (var seg in segments)
+        {
+            var run = new Run(seg.Text) { Foreground = seg.Foreground };
+            if (seg.Background is not null) run.Background = seg.Background;
+            if (seg.Bold) run.FontWeight = FontWeights.Bold;
+            if (seg.Italic) run.FontStyle = FontStyles.Italic;
+            if (seg.Underline) run.TextDecorations = TextDecorations.Underline;
+            OutputParagraph.Inlines.Add(run);
+        }
+
+        _outputLineCount++;
+        FitOutputWidth(string.Concat(segments.Select(seg => seg.Text)));
+    }
+
+    // No wrapping: page is as wide as the longest line, so the horizontal scrollbar only shows on real overflow.
+    private void FitOutputWidth(string text)
+    {
+        var width = new FormattedText(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+            new Typeface(OutputBox.FontFamily, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
+            OutputBox.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(this).PixelsPerDip).WidthIncludingTrailingWhitespace;
+        if (width <= _maxLineWidth) return;
+        _maxLineWidth = width;
+        OutputBox.Document.PageWidth = width + 20;
+    }
+
+    private void ResetOutputWidth()
+    {
+        _maxLineWidth = 0;
+        OutputBox.Document.PageWidth = double.NaN;
+    }
+
+    private void TrimOutputLines()
+    {
+        while (_outputLineCount > MaxOutputLines)
+        {
+            while (OutputParagraph.Inlines.FirstInline is Inline first)
+            {
+                OutputParagraph.Inlines.Remove(first);
+                if (first is LineBreak) break;
+            }
+            _outputLineCount--;
+        }
+    }
+
+    private bool IsScrolledToBottom()
+    {
+        var offset = OutputBox.VerticalOffset;
+        var viewportHeight = OutputBox.ViewportHeight;
+        var extentHeight = OutputBox.ExtentHeight;
+        return offset + viewportHeight >= extentHeight - 10;
+    }
+
+    private void ScrollOutputToBottom()
+    {
+        OutputBox.ScrollToEnd();
+    }
+
+    private void UpdateInfoBar()
+    {
+        var svc = GetSelectedService();
+        if (svc is null)
+        {
+            PidText.Text = "-";
+            UptimeText.Text = "-";
+            StatusText.Text = "-";
+            StatusText.Foreground = (Brush)FindResource("DefaultText");
+            return;
+        }
+
+        PidText.Text = svc.Pid?.ToString() ?? "-";
+        UptimeText.Text = svc.Uptime;
+        StatusText.Text = svc.IsRunning ? "RUNNING" : "STOPPED";
+        StatusText.Foreground = svc.IsRunning
+            ? (Brush)FindResource("RunningText")
+            : (Brush)FindResource("StoppedText");
+    }
+
+    private void UpdateButtonStates()
+    {
+        var svc = GetSelectedService();
+        var isRunning = svc?.IsRunning ?? false;
+        var hasSelection = svc != null && _serverOnline;
+        BtnStart.IsEnabled = hasSelection && !isRunning;
+        BtnStop.IsEnabled = hasSelection && isRunning;
+        BtnNewService.IsEnabled = _serverOnline;
+    }
+
+    private async Task RunWithSpinner(Button button, Func<Task> action)
+    {
+        var originalContent = button.Content;
+        button.Content = new ProgressBar { Style = (Style)FindResource("ButtonSpinner") };
+        button.IsEnabled = false;
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            button.Content = originalContent;
+            // Don't re-enable here — let UpdateButtonStates/UpdateServerStatus handle it
+        }
+    }
+
+    private async Task WaitForServerState(bool online, int timeoutMs = 10000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (await _client.HealthCheck() == online) break;
+            await Task.Delay(250);
+        }
+        _serverOnline = online;
+        UpdateServerStatus();
+        if (online) await RefreshServicesAsync();
+        else ClearServices();
+    }
+
+    private async void OnStartServer(object sender, RoutedEventArgs e)
+    {
+        var serverExe = FindServerExe();
+        if (serverExe is null)
+        {
+            MessageBox.Show("Could not find Server executable.", "Dashboard",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        await RunWithSpinner(BtnStartServer, async () =>
+        {
+            var fullConfigPath = Path.GetFullPath(_configPath);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = serverExe,
+                Arguments = $"\"{fullConfigPath}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            await WaitForServerState(true);
+        });
+    }
+
+    private async void OnStopServer(object sender, RoutedEventArgs e)
+    {
+        await RunWithSpinner(BtnStopServer, async () =>
+        {
+            await _client.StopAll();
+            var serverExe = FindServerExe();
+            if (serverExe is not null)
+            {
+                var fullConfigPath = Path.GetFullPath(_configPath);
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = serverExe,
+                    Arguments = $"\"{fullConfigPath}\" --stop",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+            }
+            await WaitForServerState(false);
+        });
+    }
+
+    private string? FindServerExe()
+    {
+        // Look for Server.exe next to the Dashboard executable
+        var dashDir = AppContext.BaseDirectory;
+        var candidate = Path.Combine(dashDir, "..", "..", "..", "..", "Server", "bin", "Debug", "net9.0", "Server.exe");
+        if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+
+        // Try sibling directory structure
+        candidate = Path.Combine(dashDir, "Server.exe");
+        if (File.Exists(candidate)) return candidate;
+
+        // Try relative to working directory
+        candidate = Path.Combine(Directory.GetCurrentDirectory(), "Server", "bin", "Debug", "net9.0", "Server.exe");
+        if (File.Exists(candidate)) return candidate;
+
+        return null;
+    }
+
+    private async void OnStart(object sender, RoutedEventArgs e)
+    {
+        var svc = GetSelectedService();
+        if (svc is not null)
+            await RunWithSpinner(BtnStart, async () =>
+            {
+                await _client.StartService(svc.Name);
+                await _client.ClearOutput(svc.Name);
+                await Task.Delay(500);
+                await SwitchOutputSubscription(force: true);
+            });
+    }
+
+    private async void OnStop(object sender, RoutedEventArgs e)
+    {
+        var svc = GetSelectedService();
+        if (svc is not null)
+            await RunWithSpinner(BtnStop, async () =>
+            {
+                await _client.StopService(svc.Name);
+                await Task.Delay(500);
+                await SwitchOutputSubscription(force: true);
+            });
+    }
+
+    private async void OnClearOutput(object sender, RoutedEventArgs e)
+    {
+        OutputParagraph.Inlines.Clear();
+        _outputLineCount = 0;
+        ResetOutputWidth();
+        var svc = GetSelectedService();
+        if (svc is not null)
+            await _client.ClearOutput(svc.Name);
+    }
+
+    private void OnCopyOutput(object sender, RoutedEventArgs e)
+    {
+        var text = new TextRange(OutputBox.Document.ContentStart, OutputBox.Document.ContentEnd).Text.TrimEnd();
+        if (!string.IsNullOrEmpty(text))
+            Clipboard.SetText(text);
+    }
+
+    private async void OnEditConfig(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ServiceItemVm item) return;
+
+        var entry = await _client.GetServiceConfig(item.Name);
+        if (entry is null)
+        {
+            MessageBox.Show("Could not load service config.", "Dashboard",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var dialog = new EditServiceDialog(entry) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.Result is not null)
+        {
+            var newName = dialog.Result.Name;
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                MessageBox.Show("Service name is required.", "Dashboard",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (newName != item.Name)
+            {
+                if (!await _client.RenameService(item.Name, newName))
+                {
+                    MessageBox.Show($"Failed to rename. '{newName}' may already exist.", "Dashboard",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                // Rename the row in place so the next refresh keeps it selected;
+                // the server keeps the same process, so the output stream stays valid
+                if (_subscribedService == item.Name) _subscribedService = newName;
+                item.Name = newName;
+            }
+            var ok = await _client.UpdateServiceConfig(newName, dialog.Result);
+            if (!ok)
+                MessageBox.Show("Failed to save config.", "Dashboard",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private async void OnNewService(object sender, RoutedEventArgs e)
+    {
+        var entry = new ServiceEntry();
+        var dialog = new EditServiceDialog(entry, isNew: true) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.Result is not null)
+        {
+            if (string.IsNullOrWhiteSpace(dialog.Result.Name))
+            {
+                MessageBox.Show("Service name is required.", "Dashboard",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var ok = await _client.CreateService(dialog.Result);
+            if (!ok)
+                MessageBox.Show("Failed to create service. Name may already exist.", "Dashboard",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private async void OnDeleteService(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ServiceItemVm item) return;
+
+        var result = MessageBox.Show($"Delete service '{item.Name}'?", "Dashboard",
+            MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
+
+        var ok = await _client.DeleteService(item.Name);
+        if (!ok)
+            MessageBox.Show("Failed to delete service.", "Dashboard",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    // ── Drag to reorder ──────────────────────────────────────────
+
+    private void OnListMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // Clicks on the row's edit/delete buttons aren't drags
+        var source = e.OriginalSource as DependencyObject;
+        _dragItem = FindAncestor<Button>(source) is null
+            ? FindAncestor<ListBoxItem>(source)?.DataContext as ServiceItemVm
+            : null;
+        _dragStart = e.GetPosition(ServiceList);
+    }
+
+    private async void OnListMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragItem is null || e.LeftButton != MouseButtonState.Pressed) return;
+        var delta = e.GetPosition(ServiceList) - _dragStart;
+        if (Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+
+        var item = _dragItem;
+        _dragItem = null;
+        var original = _items.ToList();
+        _dragging = true;
+        // Blocks until drop or cancel; rows move live in OnListDragOver meanwhile
+        var result = DragDrop.DoDragDrop(ServiceList, item, DragDropEffects.Move);
+
+        if (result == DragDropEffects.None)
+        {
+            for (var i = 0; i < original.Count; i++)
+            {
+                var cur = _items.IndexOf(original[i]);
+                if (cur >= 0 && cur != i) _items.Move(cur, i);
+            }
+        }
+        else if (!_items.SequenceEqual(original))
+        {
+            // Refresh stays paused until the server has the new order
+            if (!await _client.ReorderServices(_items.Select(i => i.Name)))
+                MessageBox.Show("Failed to save service order.", "Dashboard",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        SyncServicesOrder();
+        _dragging = false;
+    }
+
+    private void OnListDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = DragDropEffects.None;
+        if (e.Data.GetData(typeof(ServiceItemVm)) is not ServiceItemVm item) return;
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+
+        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext is not ServiceItemVm target
+            || target == item) return;
+        _items.Move(_items.IndexOf(item), _items.IndexOf(target));
+    }
+
+    private void OnListDrop(object sender, DragEventArgs e) => e.Handled = true;
+
+    // GetSelectedService indexes into _services, so keep it in step with the rows
+    private void SyncServicesOrder()
+    {
+        _services = _items
+            .Select(i => _services.FirstOrDefault(s => s.Name == i.Name))
+            .OfType<ServiceStatus>()
+            .ToList();
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d is not null and not T)
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+        return d as T;
+    }
+
+    private ServiceStatus? GetSelectedService()
+    {
+        var idx = ServiceList.SelectedIndex;
+        if (idx < 0 || idx >= _services.Count) return null;
+        return _services[idx];
+    }
+
+    private string? GetSelectedServiceName()
+    {
+        // From the row, not the last status list, so a renamed row stays selected on refresh
+        return (ServiceList.SelectedItem as ServiceItemVm)?.Name;
+    }
+
+    private void EnableDarkTitleBar()
+    {
+        var hwnd = new WindowInteropHelper(this).EnsureHandle();
+        var value = 1;
+        DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, sizeof(int));
+    }
+
+    private void SaveWindowBounds()
+    {
+        try
+        {
+            var bounds = WindowState == WindowState.Normal
+                ? new { Left, Top, Width, Height, Maximized = false }
+                : new { Left = RestoreBounds.Left, Top = RestoreBounds.Top, Width = RestoreBounds.Width, Height = RestoreBounds.Height, Maximized = WindowState == WindowState.Maximized };
+            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(bounds));
+        }
+        catch { }
+    }
+
+    private void RestoreWindowBounds()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return;
+            using var doc = JsonDocument.Parse(File.ReadAllText(SettingsPath));
+            var root = doc.RootElement;
+            Left = root.GetProperty("Left").GetDouble();
+            Top = root.GetProperty("Top").GetDouble();
+            Width = root.GetProperty("Width").GetDouble();
+            Height = root.GetProperty("Height").GetDouble();
+            if (root.GetProperty("Maximized").GetBoolean())
+                WindowState = WindowState.Maximized;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+        }
+        catch { }
+    }
+}
